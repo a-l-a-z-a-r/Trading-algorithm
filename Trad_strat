@@ -1,0 +1,73 @@
+import pandas as pd
+class mystrat2(QCAlgorithm):
+    def Initialize(self):
+        self.SetStartDate(2018, 3, 1)    #Set Start Date
+        self.SetEndDate(2021, 3, 14)      #Set End Date
+        self.SetCash(10000000)
+        self.UniverseSettings.Resolution = Resolution.Daily
+        self.AddUniverse(self.CoarseSelectionFunction, self.SelectFine)
+        self.SecuritiesList = []
+        self.indicators = {}
+
+   
+    def CoarseSelectionFunction(self, coarse):
+         sortedByDollarVolume = sorted(coarse, key=lambda x: x.DollarVolume, reverse=True)
+         filtered = [ x.Symbol for x in sortedByDollarVolume if  x.DollarVolume > 10000]
+         symbol = [ x.Symbol for x in sortedByDollarVolume if  x.DollarVolume > 10000]
+         self.SecuritiesList = filtered[:100]
+         self.symbols = [ x.Symbol for x in coarse]
+         return self.SecuritiesList
+    
+    def SelectFine(self, fine):
+        
+        return [x.Symbol for x in fine]
+ 
+    def OnData(self, data):
+        
+        for symbol in self.SecuritiesList:
+            self.Log(symbol)
+            
+        for symbol in self.SecuritiesList:
+            
+            if not data.ContainsKey(symbol):
+                continue
+            if data[symbol] is None:
+                continue
+
+            if data[symbol].Price is None:
+                continue
+
+            #Either create a new indicator, or update one we already have
+            if symbol not in self.indicators:
+                self.indicators[symbol] = SymbolData(symbol, self)
+            
+            if self.IsWarmingUp: continue
+            
+            
+            lowerband = self.indicators[symbol].bb_1.LowerBand.Current.Value
+            upperband = self.indicators[symbol].bb_2.UpperBand.Current.Value
+            rsi = self.indicators[symbol].rsi_1.Current.Value
+            
+        
+            if self.Securities[symbol].Price  < lowerband and rsi < 35 :
+                
+                self.SetHoldings(symbol, 0.99/float(len(self.SecuritiesList)))
+            elif self.Securities[symbol].Price > upperband and rsi > 65:
+                    self.Liquidate(symbol)
+                  
+    
+    def OnSecuritiesChanged(self, changes):
+        
+               for security in changes.AddedSecurities:
+                     symbol = security.Symbol
+                     ticker = symbol.Value
+                     self.Debug(f"Symbol: {symbol} with ticker: {ticker}")
+
+class SymbolData(object):
+    def __init__(self, symbol, context):
+        self.symbols = []
+        self.symbol = symbol
+        self.bb_1 = context.BB(symbol,15,0.2, MovingAverageType.Simple, Resolution.Daily)
+        self.bb_2 = context.BB(symbol,15,0.5, MovingAverageType.Simple)
+        self.rsi_1 = context.RSI(symbol,15, MovingAverageType.Simple)
+        self.atr_1 = context.ATR(symbol, 14, MovingAverageType.Simple, Resolution.Daily)
